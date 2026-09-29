@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>文書ごとのフォント分類器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* レイアウト: 1段組の技術解説。本文は明朝の見出しとゴシックの本文で、明朝/ゴシックの対比そのものを見せる */
+:root {
+  --paper: #f4f6f9;
+  --surface: #ffffff;
+  --ink: #1a2030;
+  --muted: #5b6477;
+  --line: #d7dce5;
+  --accent: #2c4c9c;
+  --accent-soft: #e2e8f6;
+  --other: #94762f;
+  --other-soft: #f3ecdb;
+  --good: #2e7a4d;
+  --warn: #b0532b;
+  --specimen-bg: #ffffff;
+  --specimen-ink: #111111;
+  --font-display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --step--1: 0.8125rem;
+  --step-0: 1rem;
+  --step-1: 1.1875rem;
+  --step-2: 1.5rem;
+  --step-3: 2.25rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #11141b;
+    --surface: #191e28;
+    --ink: #e5e8ef;
+    --muted: #99a2b4;
+    --line: #2c3341;
+    --accent: #8fa9ee;
+    --accent-soft: #212a40;
+    --other: #d4b46c;
+    --other-soft: #2c2719;
+    --good: #6cc190;
+    --warn: #e58a62;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #11141b;
+  --surface: #191e28;
+  --ink: #e5e8ef;
+  --muted: #99a2b4;
+  --line: #2c3341;
+  --accent: #8fa9ee;
+  --accent-soft: #212a40;
+  --other: #d4b46c;
+  --other-soft: #2c2719;
+  --good: #6cc190;
+  --warn: #e58a62;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--step-0);
+  line-height: 1.85;
+  padding-inline: 16px;
+  padding-block: 0 64px;
+}
+.page { max-width: 760px; margin-inline: auto; display: flex; flex-direction: column; gap: 56px; }
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.35; text-wrap: balance; margin: 0; }
+h1 { font-size: var(--step-3); letter-spacing: 0.02em; }
+h2 { font-size: var(--step-2); }
+h3 { font-size: var(--step-1); }
+p { margin: 0; }
+code, .mono { font-family: var(--font-mono); font-size: 0.9em; }
+code { background: var(--accent-soft); padding: 0.05em 0.35em; border-radius: 4px; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.eyebrow {
+  font-size: var(--step--1);
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  font-weight: 500;
+}
+section { display: flex; flex-direction: column; gap: 18px; }
+section > p, section li { max-width: 40em; }
+.lead { font-size: var(--step-1); line-height: 1.8; }
+.muted { color: var(--muted); }
+.small { font-size: var(--step--1); }
+
+/* ---------- hero ---------- */
+.hero { padding-top: 56px; display: flex; flex-direction: column; gap: 20px; }
+.hero .meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: var(--step--1); color: var(--muted); }
+.thesis {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.thesis .side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.thesis .label { font-size: var(--step--1); color: var(--muted); }
+.thesis .glyphs { font-size: 2.4rem; line-height: 1.2; }
+.thesis .glyphs .m { font-family: var(--font-display); }
+.thesis .glyphs .g { font-family: var(--font-body); font-weight: 500; }
+.thesis .arrow { font-size: 1.5rem; color: var(--accent); }
+.thesis .out { font-weight: 700; color: var(--accent); }
+
+/* ---------- pipeline ---------- */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: step; }
+.steps li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: 2.2rem 1fr;
+  gap: 4px 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-width: none;
+}
+.steps li::before {
+  content: counter(step);
+  grid-row: span 2;
+  font-family: var(--font-display);
+  font-size: var(--step-2);
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.2;
+}
+.steps .t { font-weight: 700; }
+.steps .d { color: var(--muted); font-size: 0.95rem; line-height: 1.7; }
+.steps .phase {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+/* ---------- tables ---------- */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.93rem; line-height: 1.6; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-size: var(--step--1); color: var(--muted); font-weight: 500; letter-spacing: 0.04em; white-space: nowrap; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td .mono { white-space: nowrap; }
+.hl td { background: var(--accent-soft); }
+.bad { color: var(--warn); font-weight: 700; }
+.ok { color: var(--good); font-weight: 700; }
+
+/* ---------- class chips ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px; border-radius: 999px; font-size: var(--step--1);
+  border: 1px solid var(--line); background: var(--surface);
+}
+.chip::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.chip.other { background: var(--other-soft); border-color: transparent; }
+.chip.other::before { background: var(--other); }
+
+/* ---------- specimen (augmentation demo) ---------- */
+.specimen {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.specimen figure { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.specimen canvas {
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 100%;
+  background: var(--specimen-bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  image-rendering: pixelated;
+}
+.specimen figcaption { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.specimen figcaption b { display: block; color: var(--ink); font-weight: 500; font-size: 13px; }
+.specimen-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.button {
+  font: inherit; font-size: var(--step--1);
+  padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--accent); background: transparent; color: var(--accent);
+}
+.button:hover { background: var(--accent-soft); }
+
+/* ---------- feature contrast figure ---------- */
+.contrast {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+.contrast .card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+.contrast .big { font-size: 5.5rem; line-height: 1.1; text-align: center; background: var(--specimen-bg); color: var(--specimen-ink); border-radius: 6px; }
+.contrast .card:first-child .big { font-family: var(--font-display); font-weight: 500; }
+.contrast .card:last-child .big { font-family: var(--font-body); font-weight: 500; }
+.contrast .val { font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: var(--step-1); }
+.dims { display: grid; grid-template-columns: 324fr 76fr; height: 28px; border-radius: 6px; overflow: hidden; font-size: 12px; }
+.dims span { display: flex; align-items: center; padding-inline: 8px; white-space: nowrap; overflow: hidden; }
+.dims .hog { background: var(--accent-soft); color: var(--ink); }
+.dims .stroke { background: var(--accent); color: var(--surface); }
+
+/* ---------- chart ---------- */
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 4px; overflow-x: auto; }
+.chart svg { display: block; width: 100%; min-width: 480px; height: auto; }
+.chart text { fill: var(--muted); font-family: var(--font-body); font-size: 12px; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { stroke: var(--muted); stroke-width: 1; }
+.chart .recall { stroke: var(--accent); fill: none; stroke-width: 2.5; }
+.chart .reject { stroke: var(--other); fill: none; stroke-width: 2.5; }
+.chart .dot-recall { fill: var(--accent); }
+.chart .dot-reject { fill: var(--other); }
+.chart .tmpl { fill: var(--surface); stroke: var(--muted); stroke-width: 2; }
+.chart .default { stroke: var(--ink); stroke-dasharray: 4 4; stroke-width: 1; }
+.chart .strong { fill: var(--ink); font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: var(--step--1); color: var(--muted); padding: 4px 4px 8px; }
+.legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+
+/* ---------- result summary ---------- */
+.results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.result { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.result.ml { border-color: var(--accent); }
+.result h3 { font-size: var(--step-0); font-family: var(--font-body); }
+.bar-row { display: grid; grid-template-columns: 8.5em 1fr 3.2em; gap: 8px; align-items: center; font-size: var(--step--1); }
+.bar { height: 10px; background: var(--paper); border-radius: 5px; overflow: hidden; }
+.bar b { display: block; height: 100%; border-radius: 5px; }
+.bar .r { background: var(--accent); }
+.bar .x { background: var(--other); }
+.bar-row .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+ul.plain { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
+pre {
+  margin: 0; padding: 14px 16px; overflow-x: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  font-family: var(--font-mono); font-size: 0.85rem; line-height: 1.7;
+}
+.note {
+  border-left: 3px solid var(--other);
+  background: var(--other-soft);
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+  font-size: 0.95rem;
+}
+footer { border-top: 1px solid var(--line); padding-top: 16px; font-size: var(--step--1); color: var(--muted); }
+
+@media (max-width: 620px) {
+  :root { --step-3: 1.75rem; --step-2: 1.3rem; }
+  .thesis { grid-template-columns: 1fr; text-align: left; }
+  .thesis .arrow { transform: rotate(90deg); justify-self: start; }
+  .specimen { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .contrast, .results { grid-template-columns: 1fr; }
+  .contrast .big { font-size: 4.5rem; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header class="hero">
+    <span class="eyebrow">font-detector ・ 画像内の文字の判定方式</span>
+    <h1>文書ごとのフォント分類器</h1>
+    <p class="lead">PDFの本文には、どのフォントでどの字形が描かれているかが記録されています。これをそのまま正解付きの学習データにして、文書を開くたびに小さな分類器を学習し、画像の中の文字がどのフォントで書かれているかを判定します。</p>
+    <div class="thesis" aria-label="手法の概要">
+      <div class="side">
+        <span class="label">入力: PDFの本文 (正解付き)</span>
+        <span class="glyphs"><span class="m">書</span> <span class="g">書</span></span>
+        <span class="small muted">MS 明朝 / 游ゴシック …</span>
+      </div>
+      <span class="arrow" aria-hidden="true">→</span>
+      <div class="side">
+        <span class="label">出力: 画像内の各行</span>
+        <span class="out">どのフォントか ＋ 確率</span>
+        <span class="small muted">PDFに無い書体は「その他」</span>
+      </div>
+    </div>
+    <div class="meta">
+      <span>scikit-learn ・ CPU のみ ・ オフライン</span>
+      <span>学習済みモデルのダウンロード不要</span>
+      <span>実装: <span class="mono">src/font_detector/mlclassifier.py</span></span>
+    </div>
+  </header>
+
+  <section>
+    <span class="eyebrow">なぜ機械学習か</span>
+    <h2>同じ文字が本文に無くても判定できる</h2>
+    <p>従来の字形照合は、画像内の文字を、本文にある<strong>同じ文字</strong>の字形と比べます。Word が埋め込むフォントは使った文字だけのサブセットなので、画像内の文字が本文に無ければ比べられません。評価では、PDFのフォントで書かれた行のうち判定できたのは 25% でした。</p>
+    <p>分類器が学習するのは文字の形そのものではなく、線の太さ・縦画と横画の太さの比・形の傾向といった<strong>書体の特徴</strong>です。そのため、学習に使っていない文字でも書体を判定できます。</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">処理の流れ</span>
+    <h2>文書を開いてから判定まで</h2>
+    <ol class="steps">
+      <li><span class="t">本文から字形を集める<span class="phase">学習</span></span>
+        <span class="d">PDFのフォントごとに、出現頻度の高い文字を最大 300 字選び、ページを 6 倍で描画して1文字ずつ切り出します。埋め込まれていないフォントは、同名のシステムフォントで描画して補います。</span></li>
+      <li><span class="t">「その他」の字形を集める<span class="phase">学習</span></span>
+        <span class="d">PDFで使われていないインストール済みフォントから最大 12 書体、各 120 字を描画します。PDFに無い書体を見分けるための反例です。</span></li>
+      <li><span class="t">劣化させて水増しする<span class="phase">学習</span></span>
+        <span class="d">1字形につき 2 通り、縮小・ぼかし・ノイズ・JPEG圧縮・太さの変化をかけ、画像内の文字の見え方に近づけます。</span></li>
+      <li><span class="t">特徴量を計算して学習する<span class="phase">学習</span></span>
+        <span class="d">1字形を 400 次元のベクトルにし、標準化してロジスティック回帰を学習します。</span></li>
+      <li><span class="t">画像内の文字を1字ずつ分類する<span class="phase">判定</span></span>
+        <span class="d">Tesseract で読んだ行を、インクの切れ目で1文字ずつに区切り、各文字のフォントの確率を出します。</span></li>
+      <li><span class="t">行ごとにまとめて判定する<span class="phase">判定</span></span>
+        <span class="d">行内の文字の確率を平均し、最も高いフォントの確率が 0.55 以上なら、そのフォントの行とします。</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <span class="eyebrow">学習データ</span>
+    <h2>クラスは「PDFのフォント」と「その他」</h2>
+    <div class="chips" aria-label="クラスの例">
+      <span class="chip">游ゴシック</span>
+      <span class="chip">游ゴシック Bold</span>
+      <span class="chip">Century</span>
+      <span class="chip other">その他のフォント</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>クラス</th><th>字形の出どころ</th><th>条件</th></tr></thead>
+        <tbody>
+          <tr><td>PDFのフォント</td><td>本文 (テキストレイヤー) から切り出し</td><td>埋め込みフォントのみ。非埋め込みはビューアの代替フォントで描かれるため使わない</td></tr>
+          <tr><td>PDFのフォント</td><td>同名のシステムフォントで描画</td><td>非埋め込み、または本文の字形が足りない場合に補う</td></tr>
+          <tr><td>その他</td><td>PDFで使われていないシステムフォントで描画</td><td>文字種 (和文/欧文) ごとに偏らないよう選ぶ</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>学習できるのは字形が 20 以上あるフォントだけです。クラスが2つ未満 (PDFのフォントが1種類で、「その他」に使えるフォントも無い場合など) のときは学習せず、字形照合に切り替えます。</p>
+    <h3>字形が同じ別名フォントは「その他」から外す</h3>
+    <p>Windows には、同じ字形を別名で収めたフォントがあります。PDFが MS 明朝を使っているときに MS P明朝を「その他」として学習すると、同じ字形に別のラベルが付き、判定が崩れます。そこで次のフォントは「その他」に入れません。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>除外の理由</th><th>例</th></tr></thead>
+        <tbody>
+          <tr><td>PDFのフォントと同じファイル (TTC) に入っている</td><td>msmincho.ttc の MS 明朝 / MS P明朝</td></tr>
+          <tr><td>プロポーショナル版</td><td>MS Pゴシック、BIZ UDP明朝</td></tr>
+          <tr><td>UI 版</td><td>Yu Gothic UI、Meiryo UI</td></tr>
+          <tr><td>地域版・等幅版</td><td>Noto Sans CJK SC / KR、Noto Sans Mono CJK</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">水増し</span>
+    <h2>本文の字形を、画像の中の文字のように劣化させる</h2>
+    <p>本文の字形は高解像度でくっきりしていますが、画像内の文字は小さく、ぼやけ、圧縮されています。学習時にこの差を埋めるため、1字形ごとに乱数で次の処理をかけます。下の図は、このページ上で「書」の字を実際に処理したものです。</p>
+    <div class="specimen" id="specimen">
+      <figure><canvas id="sp-0" width="96" height="96"></canvas><figcaption><b>元の字形</b>本文から 6 倍で切り出し</figcaption></figure>
+      <figure><canvas id="sp-1" width="18" height="18"></canvas><figcaption><b>縮小</b>高さ 12〜48px</figcaption></figure>
+      <figure><canvas id="sp-2" width="18" height="18"></canvas><figcaption><b>ぼかし</b>σ 0〜0.7</figcaption></figure>
+      <figure><canvas id="sp-3" width="18" height="18"></canvas><figcaption><b>ノイズ</b>σ 0〜6 (256階調)</figcaption></figure>
+      <figure><canvas id="sp-4" width="18" height="18"></canvas><figcaption><b>JPEG圧縮</b>50% の確率で品質 40〜95</figcaption></figure>
+    </div>
+    <div class="specimen-foot">
+      <span class="small muted">縮小以降は画素を拡大して表示しています。実際の処理は <span class="mono">degrade()</span> です。</span>
+      <button class="button" id="reroll" type="button">別の乱数で作り直す</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>処理</th><th>範囲</th><th>ねらい</th></tr></thead>
+        <tbody>
+          <tr><td>太さの変化</td><td>15% で細く、15% で太く (2×2 の収縮/膨張)</td><td>描画や印刷による線の太りやかすれ</td></tr>
+          <tr><td>縮小</td><td>長辺 12〜48px (対数一様)</td><td>画像内の文字の大きさのばらつき</td></tr>
+          <tr><td>濃さ</td><td>インクの濃さ 75〜100%</td><td>薄い印字、背景との差</td></tr>
+          <tr><td>ぼかし</td><td>ガウシアン σ 0〜0.7px</td><td>拡大縮小やピンぼけ</td></tr>
+          <tr><td>ノイズ</td><td>ガウス雑音 σ 0〜6</td><td>スキャンやカメラのざらつき</td></tr>
+          <tr><td>JPEG圧縮</td><td>50% の確率、品質 40〜95</td><td>スクリーンショットや写真の圧縮</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">劣化後は、画像内の文字と同じ関数 (<span class="mono">ink_crop</span>) でインクの外接矩形を切り出し、学習時と判定時の前処理をそろえています。</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">特徴量</span>
+    <h2>形の傾向と、線の太さ</h2>
+    <p>1字形を 400 次元のベクトルにします。形の傾向を表す HOG と、書体の性格を表す線の太さの統計を組み合わせます。</p>
+    <div class="dims" role="img" aria-label="特徴量400次元の内訳: HOG 324次元、線の太さ 76次元">
+      <span class="hog">HOG 324</span><span class="stroke">線 76</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>特徴量</th><th class="num">次元</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td>HOG</td><td class="num">324</td><td>32×32 に縮めた字形の、8px セルごとの輪郭の向き (9方向)。2×2 セルで正規化</td></tr>
+          <tr><td>線の太さの分布</td><td class="num">13</td><td>距離変換の尾根から測った線幅の 10/25/50/75/90 パーセンタイルと、8区間のヒストグラム</td></tr>
+          <tr><td>太さのばらつき</td><td class="num">1</td><td>線幅の 90 パーセンタイル ÷ 10 パーセンタイル</td></tr>
+          <tr><td>縦画・横画の太さ</td><td class="num">3</td><td>横画の太さ、縦画の太さ、その比 (対数)</td></tr>
+          <tr><td>その他</td><td class="num">2</td><td>インクの密度、字形の縦横比</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">線の太さの特徴 (19 値) は 4 回ずつ繰り返して 76 次元にし、324 次元の HOG に埋もれないよう重みを付けています。</p>
+
+    <h3>縦画と横画の太さの比が、明朝体を見分ける</h3>
+    <p>明朝体は横画が細く縦画が太いのに対し、ゴシック体はほぼ同じ太さです。インクの連続長 (縦方向の連続 = 横画の太さ、横方向の連続 = 縦画の太さ) の下位 25% 点をとり、その比の対数を特徴量にしています。</p>
+    <div class="contrast">
+      <div class="card">
+        <div class="big" aria-label="明朝体の永">永</div>
+        <span>明朝体 (Noto Serif CJK)</span>
+        <span class="val">縦横比 0.55</span>
+        <span class="small muted">「書十日本永東語」の平均</span>
+      </div>
+      <div class="card">
+        <div class="big" aria-label="ゴシック体の永">永</div>
+        <span>ゴシック体 (Noto Sans CJK)</span>
+        <span class="val">縦横比 0.34</span>
+        <span class="small muted">「書十日本永東語」の平均</span>
+      </div>
+    </div>
+    <p class="small muted">連続長の中央値を使うと、横画そのものの長さ (ゴシック体の「書」で 23px) を拾ってしまうため、短い側の代表値を使います。</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">分類と判定</span>
+    <h2>ロジスティック回帰と、行ごとの平均</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>項目</th><th>設定</th></tr></thead>
+        <tbody>
+          <tr><td>モデル</td><td><span class="mono">StandardScaler</span> → <span class="mono">LogisticRegression(C=0.01, class_weight="balanced")</span></td></tr>
+          <tr><td>クラスの偏り</td><td>「その他」は字形が多いため、クラスごとの件数で重みを付けて均す</td></tr>
+          <tr><td>文字種の制約</td><td>欧文だけを学習したフォント (Century など) は、和文の文字には割り当てない</td></tr>
+          <tr><td>判定に使う文字</td><td>OCR の確信度 60 以上。記号・句読点・「一」「ー」「l」など形が書体で変わらない文字は除く</td></tr>
+          <tr><td>行の判定</td><td>2 文字以上の確率を平均し、最上位が PDFのフォントで 0.55 以上なら該当</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>学習と OCR の結果は文書ごとに保存するため、フォントの選択・判定方式・しきい値を変えても再計算しません。</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">評価</span>
+    <h2>ベンチマーク</h2>
+    <p>Google Fonts の日本語フォント 16 種を、「PDFで使うフォント」「その他の学習用」「評価専用の未知フォント」に分けました。評価専用のフォントは学習に一切使っていません。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>文書</th><th>PDFで使うフォント</th><th>画像内の未知フォント</th></tr></thead>
+        <tbody>
+          <tr><td>A</td><td>BIZ UD明朝、BIZ UDゴシック</td><td>Klee One、Zen Maru Gothic、Shippori Mincho Bold、Zen Kaku Gothic New Bold、M PLUS 1p</td></tr>
+          <tr><td>B</td><td>Zen Kaku Gothic New、Shippori Mincho</td><td>Klee One、Zen Maru Gothic、BIZ UDゴシック、M PLUS 1p、Shippori Mincho Bold、Zen Kaku Gothic New Bold</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small muted">画像内の文章は本文に無い文字を多く含む 4 文で、文字の高さ 16・22・32px、JPEG 品質 75。「その他」の学習には Sawarabi 明朝・Sawarabi ゴシック・Kiwi Maru・Zen Old Mincho・Hina Mincho と、評価環境の Noto・Droid 等を使いました。合計 126 行 (PDFのフォント 48 行、未知フォント 78 行)。</p>
+
+    <div class="results">
+      <div class="result">
+        <h3>字形照合 (しきい値 0.85)</h3>
+        <div class="bar-row"><span>PDFのフォントを判定</span><span class="bar"><b class="r" style="width:25%"></b></span><span class="num">25%</span></div>
+        <div class="bar-row"><span>未知フォントを除外</span><span class="bar"><b class="x" style="width:100%"></b></span><span class="num">100%</span></div>
+        <span class="small muted">同じ文字が本文に無い行は判定できず、どちらの数字も「判定しない」ことで得たもの</span>
+      </div>
+      <div class="result ml">
+        <h3>機械学習 (しきい値 0.55)</h3>
+        <div class="bar-row"><span>PDFのフォントを判定</span><span class="bar"><b class="r" style="width:100%"></b></span><span class="num">100%</span></div>
+        <div class="bar-row"><span>未知フォントを除外</span><span class="bar"><b class="x" style="width:65%"></b></span><span class="num">65%</span></div>
+        <span class="small muted">48 行すべてを正しいフォントに判定。未知フォント 78 行のうち 27 行を誤って受け入れた</span>
+      </div>
+    </div>
+
+    <h3>しきい値による変化</h3>
+    <div class="chart">
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>機械学習: PDFのフォントを判定</span>
+        <span><i style="background:var(--other)"></i>機械学習: 未知フォントを除外</span>
+        <span>○ 字形照合 (0.85)</span>
+      </div>
+      <svg id="sweep" viewBox="0 0 600 280" role="img" aria-label="しきい値ごとの正答率と除外率のグラフ"></svg>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>しきい値</th><th class="num">PDFのフォントを判定</th><th class="num">未知フォントを除外</th></tr></thead>
+        <tbody id="sweep-table"></tbody>
+      </table>
+    </div>
+
+    <h3>誤って受け入れた未知フォント (しきい値 0.55)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>文書</th><th>未知フォント</th><th class="num">誤受入 / 行</th><th>似ているPDFのフォント</th></tr></thead>
+        <tbody>
+          <tr><td>A</td><td>Klee One (手書き風)</td><td class="num bad">11 / 12</td><td>BIZ UD明朝</td></tr>
+          <tr><td>B</td><td>Zen Maru Gothic (丸ゴシック)</td><td class="num bad">12 / 12</td><td>Zen Kaku Gothic New (同じ骨格の角ゴシック)</td></tr>
+          <tr><td>B</td><td>Klee One</td><td class="num">2 / 12</td><td>—</td></tr>
+          <tr><td>B</td><td>BIZ UDゴシック</td><td class="num">2 / 12</td><td>Zen Kaku Gothic New</td></tr>
+          <tr><td>A・B</td><td>Shippori Mincho Bold、Zen Kaku Gothic New Bold、M PLUS 1p ほか</td><td class="num ok">0</td><td>太字版は正しく除外</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>誤受入のほとんどは、PDFのフォントと骨格が同じか近い書体でした。太さの違い (Bold) は確実に見分けられています。</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">限界</span>
+    <h2>わかっている弱点</h2>
+    <ul class="plain">
+      <li><strong>よく似た書体は区別しにくい。</strong>丸ゴシックと角ゴシック、手書き風と明朝のように、骨格が近いものは誤って受け入れます。しきい値を 0.60〜0.65 に上げると除外は増え (72〜85%)、検出は減ります (90〜75%)。</li>
+      <li><strong>「その他」の書体数に左右される。</strong>評価環境では和文の「その他」は数書体でした。Windows 標準の日本語フォントが使える環境では、除外の精度は上がる見込みですが、まだ確認していません。</li>
+      <li><strong>学習に時間がかかる。</strong>評価に使った CPU では、OCR を含めて 1 文書あたり約 50 秒でした。結果は文書ごとに保存されるので、かかるのは初回だけです。</li>
+      <li><strong>横書きのみ。</strong>縦書きの行や、回転したページの本文からは字形を集めません。</li>
+      <li><strong>評価は合成画像。</strong>ベンチマークは描画した文字画像で行いました。実際のスクリーンショットや写真での精度は未評価です。</li>
+    </ul>
+    <p class="note">誤検出が気になるときはしきい値を上げ、見落としが気になるときは下げてください。UI では画像内の各行にマウスを重ねると、両方式の上位候補と確率を確認できます。</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">使い方</span>
+    <h2>UI と CLI</h2>
+    <p>Web UI で「画像内の文字も判定」をオンにすると、判定方式として機械学習が選ばれた状態になります。字形照合に切り替えると、しきい値は 0.85 に変わります。</p>
+    <pre>python -m font_detector scan input.pdf --font "MS 明朝" --images --method ml -o out.pdf
+python -m font_detector scan input.pdf --font "MS 明朝" --images --method ml --min-score 0.65</pre>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ファイル</th><th>役割</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">mlclassifier.py</td><td>学習データの収集、水増し、特徴量、学習、行の判定</td></tr>
+          <tr><td class="mono">imagescan.py</td><td>画像領域の OCR と、字形照合・機械学習の両方式でのスコア計算</td></tr>
+          <tr><td class="mono">glyphs.py</td><td>本文からの字形の切り出し、システムフォントでの描画</td></tr>
+          <tr><td class="mono">sysfonts.py</td><td>インストール済みフォントの一覧と、収録文字の確認</td></tr>
+          <tr><td class="mono">matcher.py</td><td>判定方式・しきい値・指定フォントによる絞り込み</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>font-detector ・ <a href="https://github.com/friendly912/font-detector" target="_blank" rel="noopener">github.com/friendly912/font-detector</a> ・ ベンチマークは 2026-09-29 時点のコード (コミット ce9779b) によるもの</footer>
+</main>
+
+<script>
+(() => {
+  // ---------- しきい値による変化 (ベンチマーク実測値) ----------
+  const sweep = [
+    { t: 0.40, recall: 100, reject: 33 },
+    { t: 0.50, recall: 100, reject: 56 },
+    { t: 0.55, recall: 100, reject: 65 },
+    { t: 0.60, recall: 90, reject: 72 },
+    { t: 0.65, recall: 75, reject: 85 },
+    { t: 0.70, recall: 46, reject: 92 },
+    { t: 0.80, recall: 2, reject: 100 },
+  ];
+  const template = { t: 0.85, recall: 25, reject: 100 };
+
+  const tbody = document.getElementById("sweep-table");
+  for (const r of sweep) {
+    const tr = document.createElement("tr");
+    if (r.t === 0.55) tr.className = "hl";
+    tr.innerHTML = `<td class="mono">${r.t.toFixed(2)}${r.t === 0.55 ? " (既定)" : ""}</td>` +
+      `<td class="num">${r.recall}%</td><td class="num">${r.reject}%</td>`;
+    tbody.append(tr);
+  }
+
+  const svg = document.getElementById("sweep");
+  const NS = "http://www.w3.org/2000/svg";
+  const W = 600, H = 280, L = 48, R = 20, T = 16, B = 44;
+  const x = (t) => L + ((t - 0.35) / (0.9 - 0.35)) * (W - L - R);
+  const y = (v) => T + (1 - v / 100) * (H - T - B);
+  const el = (name, attrs, text) => {
+    const e = document.createElementNS(NS, name);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (text != null) e.textContent = text;
+    svg.append(e);
+    return e;
+  };
+  for (const v of [0, 25, 50, 75, 100]) {
+    el("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "grid" });
+    el("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end" }, `${v}%`);
+  }
+  for (const t of [0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) {
+    el("line", { x1: x(t), x2: x(t), y1: H - B, y2: H - B + 5, class: "axis" });
+    el("text", { x: x(t), y: H - B + 20, "text-anchor": "middle" }, t.toFixed(1));
+  }
+  el("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, class: "axis" });
+  el("text", { x: (L + W - R) / 2, y: H - 6, "text-anchor": "middle" }, "しきい値 (機械学習は確率、字形照合は類似度)");
+  el("line", { x1: x(0.55), x2: x(0.55), y1: T, y2: H - B, class: "default" });
+  el("text", { x: x(0.55) + 6, y: T + 12, class: "strong" }, "既定 0.55");
+  const path = (key) => sweep.map((r, i) => `${i ? "L" : "M"}${x(r.t).toFixed(1)},${y(r[key]).toFixed(1)}`).join(" ");
+  el("path", { d: path("recall"), class: "recall" });
+  el("path", { d: path("reject"), class: "reject" });
+  for (const r of sweep) {
+    el("circle", { cx: x(r.t), cy: y(r.recall), r: 3.5, class: "dot-recall" });
+    el("circle", { cx: x(r.t), cy: y(r.reject), r: 3.5, class: "dot-reject" });
+  }
+  el("circle", { cx: x(template.t), cy: y(template.recall), r: 5, class: "tmpl" });
+  el("circle", { cx: x(template.t), cy: y(template.reject), r: 5, class: "tmpl" });
+  el("text", { x: x(template.t) - 8, y: y(template.recall) + 4, "text-anchor": "end" }, "字形照合 25%");
+
+  // ---------- 水増しの実演 (degrade() と同じ順序の処理をブラウザで再現) ----------
+  let seed = 7;
+  const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const gauss = () => Math.sqrt(-2 * Math.log(rand() + 1e-9)) * Math.cos(2 * Math.PI * rand());
+  const ctxOf = (id) => document.getElementById(id).getContext("2d", { willReadFrequently: true });
+
+  function drawSource() {
+    const ctx = ctxOf("sp-0");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 96, 96);
+    ctx.fillStyle = "#111";
+    ctx.font = '500 78px "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif';
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("書", 48, 52);
+    return ctx.canvas;
+  }
+  function copyTo(id, src) {
+    const ctx = ctxOf(id);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(src, 0, 0, ctx.canvas.width, ctx.canvas.height);
+    return ctx;
+  }
+  function blur(ctx, sigma) {
+    const { width: w, height: h } = ctx.canvas;
+    const img = ctx.getImageData(0, 0, w, h), d = img.data, src = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) src[i] = d[i * 4];
+    const k = [-1, 0, 1].map((o) => Math.exp(-(o * o) / (2 * sigma * sigma)));
+    const ks = k[0] + k[1] + k[2];
+    const pass = (a, dx, dy) => {
+      const out = new Float32Array(w * h);
+      for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) {
+        let s = 0;
+        for (let o = -1; o <= 1; o++) {
+          const sx = Math.min(w - 1, Math.max(0, xx + o * dx)), sy = Math.min(h - 1, Math.max(0, yy + o * dy));
+          s += a[sy * w + sx] * k[o + 1];
+        }
+        out[yy * w + xx] = s / ks;
+      }
+      return out;
+    };
+    const res = pass(pass(src, 1, 0), 0, 1);
+    for (let i = 0; i < w * h; i++) { d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = res[i]; }
+    ctx.putImageData(img, 0, 0);
+  }
+  function noise(ctx, sigma) {
+    const { width: w, height: h } = ctx.canvas;
+    const img = ctx.getImageData(0, 0, w, h), d = img.data;
+    for (let i = 0; i < w * h; i++) {
+      const v = Math.max(0, Math.min(255, d[i * 4] + gauss() * sigma));
+      d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  function jpeg(fromCtx, id, quality) {
+    return new Promise((resolve) => {
+      const im = new Image();
+      im.onload = () => { const c = ctxOf(id); c.drawImage(im, 0, 0); resolve(); };
+      im.onerror = () => { ctxOf(id).drawImage(fromCtx.canvas, 0, 0); resolve(); };
+      im.src = fromCtx.canvas.toDataURL("image/jpeg", quality);
+    });
+  }
+  async function render() {
+    const src = drawSource();
+    const small = copyTo("sp-1", src);
+    const b = copyTo("sp-2", small.canvas); blur(b, 0.3 + rand() * 0.4);
+    const n = copyTo("sp-3", b.canvas); noise(n, 3 + rand() * 3);
+    await jpeg(n, "sp-4", 0.4 + rand() * 0.2);
+  }
+
+  const start = () => render().catch(() => {});
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('500 78px "Shippori Mincho"', "書").then(start, start);
+  } else {
+    start();
+  }
+  document.getElementById("reroll").addEventListener("click", () => { seed = (seed * 31 + 17) >>> 0; start(); });
+})();
+</script>
+</body>
+</html>
