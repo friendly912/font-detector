@@ -20,6 +20,28 @@ PDFのテキストレイヤーから、指定したフォントで書かれた�
 Tesseract の日本語・英語データの `tessdata/` への取得、Tesseract の確認までを行います。
 状態は `python -m font_detector check-ocr` でいつでも確認できます。
 
+### インターネットに接続できない Windows PC へのインストール
+
+`package/` に Windows 10/11 (64bit)・Python 3.10 用のパッケージ一式 (wheel) を同梱しています。
+プロジェクトのフォルダで次を実行します。
+
+```bat
+py -3.10 -m venv .venv
+.venv\Scripts\python.exe -m pip install --no-index --find-links package pip
+.venv\Scripts\python.exe -m pip install --no-index --find-links package -r requirements.txt
+.venv\Scripts\python.exe -m pip install --no-index --find-links package --no-deps -e .
+```
+
+Tesseract 本体と言語データ (`tessdata/*.traineddata`) は含まれないため、別途用意してください。
+`requirements.txt` を更新したら、`package/` も取り直します。
+
+```bash
+python3.10 -m pip download --dest package --platform win_amd64 --python-version 3.10 \
+    --implementation cp --abi cp310 --only-binary=:all: --no-deps -r requirements.txt
+python3.10 -m pip download --dest package --platform win_amd64 --python-version 3.10 \
+    --only-binary=:all: --no-deps "setuptools>=68" wheel pip
+```
+
 ## 起動 (オフラインで動作)
 
 | OS | 手順 |
