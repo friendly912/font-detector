@@ -2,7 +2,7 @@
 
 PDFのテキストレイヤーから、指定したフォントで書かれた箇所を検出して強調表示します。
 
-## セットアップ (初回のみ・インターネット接続が必要)
+## セットアップ (初回のみ)
 
 1. Python 3.10 をインストールします。
 2. 画像内の文字判定を使う場合は **Tesseract OCR** をインストールします
@@ -18,16 +18,25 @@ PDFのテキストレイヤーから、指定したフォントで書かれた�
 
 仮想環境 (.venv) の作成、パッケージのインストール (`requirements.txt` でバージョン固定)、
 Tesseract の日本語・英語データの `tessdata/` への取得、Tesseract の確認までを行います。
+Windows の `setup.bat` は、`package/` があればインターネットを使わずにそこからインストールします
+(下記)。`package/` が無い場合と `setup.sh` はインターネット接続が必要です。
 状態は `python -m font_detector check-ocr` でいつでも確認できます。
 
 ### インターネットに接続できない Windows PC へのインストール
 
 `package/` に Windows 10/11 (64bit)・Python 3.10 用のパッケージ一式 (wheel) を同梱しています。
-プロジェクトのフォルダで次を実行します。
+
+1. 64bit 版の Python 3.10 をインストールします。
+2. プロジェクト一式 (GitHub の「Download ZIP」など) をコピーします。
+3. 画像内の文字も判定する場合は、Tesseract のインストーラーと `tessdata/` の言語データ
+   (`jpn.traineddata`、`eng.traineddata`) も用意します。
+4. `setup.bat` を実行します。`package/` を見つけると、自動でオフラインインストールします。
+
+手動で行う場合は、プロジェクトのフォルダで次を実行します。
 
 ```bat
 py -3.10 -m venv .venv
-.venv\Scripts\python.exe -m pip install --no-index --find-links package pip
+.venv\Scripts\python.exe -m pip install --no-index --find-links package --upgrade pip
 .venv\Scripts\python.exe -m pip install --no-index --find-links package -r requirements.txt
 .venv\Scripts\python.exe -m pip install --no-index --find-links package --no-deps -e .
 ```
