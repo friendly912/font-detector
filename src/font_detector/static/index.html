@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Font Detector</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <header class="brand">
+      <h1>Font Detector</h1>
+      <p>PDFの本文から指定フォントの箇所を強調表示します</p>
+    </header>
+
+    <section class="panel">
+      <label id="dropzone" class="dropzone">
+        <input id="file-input" type="file" accept="application/pdf,.pdf" hidden>
+        <span class="dropzone-main">PDFをドロップ、またはクリックして選択</span>
+        <span id="file-name" class="dropzone-sub"></span>
+      </label>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="controls" class="panel" hidden>
+      <h2>フォント指定</h2>
+      <input id="query" type="search" class="text-input"
+             placeholder="名前で指定 (例: MS 明朝, Century)" autocomplete="off">
+      <p class="hint">一覧から選択するか、名前を入力します（カンマ区切りで複数指定）。</p>
+
+      <div class="font-list-head">
+        <span>PDF内のフォント</span>
+        <button id="clear-selection" type="button" class="link-button">選択解除</button>
+      </div>
+      <ul id="font-list" class="font-list"></ul>
+
+      <div class="options">
+        <label class="check"><input id="body-only" type="checkbox"> 本文のみ <span id="body-size" class="muted"></span></label>
+        <label class="check"><input id="show-images" type="checkbox" checked> 画像領域を表示</label>
+      </div>
+
+      <div class="image-options">
+        <label class="check"><input id="include-images" type="checkbox"> 画像内の文字も判定 <span class="muted">(OCR)</span></label>
+        <div id="image-controls" class="image-controls" hidden>
+          <label for="min-score" class="slider-label">
+            類似度しきい値 <output id="min-score-value">0.85</output>
+          </label>
+          <input id="min-score" type="range" min="0.60" max="0.98" step="0.01" value="0.85">
+          <p class="hint">画像内の各行を、PDF内のフォントの字形と比べて推定します。低くすると検出が増え、誤検出も増えます。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="results-panel" class="panel results-panel" hidden>
+      <div class="results-head">
+        <h2>検出結果</h2>
+        <button id="download" type="button" class="button" disabled>注釈付きPDF</button>
+      </div>
+      <p id="summary" class="summary"></p>
+      <ol id="results" class="results"></ol>
+    </section>
+  </aside>
+
+  <main id="viewer" class="viewer">
+    <div id="empty" class="empty">
+      <p>PDFファイルを読み込むと、ここにページが表示されます。</p>
+    </div>
+    <div id="pages" class="pages"></div>
+  </main>
+
+  <template id="font-item">
+    <li class="font-item">
+      <label>
+        <input type="checkbox">
+        <span class="swatch"></span>
+        <span class="font-main">
+          <span class="font-name"></span>
+          <span class="font-meta"></span>
+        </span>
+      </label>
+    </li>
+  </template>
+</body>
+</html>
