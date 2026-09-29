@@ -10,6 +10,8 @@ dependencies = [
     "python-multipart>=0.0.9",
     # 画像内の文字判定 (OCR本体の Tesseract は別途インストール)
     "opencv-python-headless>=4.8",
+    # 画像内の文字判定 (機械学習)
+    "scikit-learn>=1.3",
     "fonttools>=4.40",
     "pillow>=10",
     "numpy>=1.24",

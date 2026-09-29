@@ -10,6 +10,7 @@ import os
 import sys
 import threading
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from . import fontname
@@ -63,25 +64,42 @@ def _names(font) -> set[str]:
     return {n for n in names if n}
 
 
+@lru_cache(maxsize=128)
+def cmap(font: SystemFont) -> frozenset[int]:
+    """フォントが持つ文字 (Unicode コードポイント) の集合。"""
+    from fontTools.ttLib import TTFont
+
+    try:
+        return frozenset((TTFont(font.path, fontNumber=font.index, lazy=True).getBestCmap() or {}).keys())
+    except Exception:
+        return frozenset()
+
+
 class SystemFontIndex:
     """フォントキー (fontname.parse().key) → システムフォントファイル。初回参照時に走査する。"""
 
     def __init__(self, dirs: list[Path] | None = None) -> None:
         self._dirs = dirs
         self._index: dict[str, SystemFont] | None = None
+        self._families: dict[SystemFont, set[str]] = {}
         self._lock = threading.Lock()
 
     def lookup(self, key: str) -> SystemFont | None:
         return self._load().get(key)
 
+    def fonts(self) -> dict[SystemFont, set[str]]:
+        """インストールされている全フォント → そのフォントの全ファミリーID (名前の言語違いを含む)。"""
+        self._load()
+        return dict(self._families)
+
     def _load(self) -> dict[str, SystemFont]:
         with self._lock:
             if self._index is None:
-                self._index = self._scan(self._dirs if self._dirs is not None else font_dirs())
+                self._index = self._scan(self._dirs if self._dirs is not None else font_dirs(), self._families)
             return self._index
 
     @staticmethod
-    def _scan(dirs: list[Path]) -> dict[str, SystemFont]:
+    def _scan(dirs: list[Path], families: dict[SystemFont, set[str]]) -> dict[str, SystemFont]:
         from fontTools.ttLib import TTCollection, TTFont
 
         index: dict[str, SystemFont] = {}
@@ -95,8 +113,11 @@ class SystemFontIndex:
                     else:
                         fonts = [TTFont(str(path), lazy=True)]
                     for i, font in enumerate(fonts):
-                        for name in _names(font):
-                            index.setdefault(fontname.parse(name).key, SystemFont(str(path), i))
+                        sf = SystemFont(str(path), i)
+                        for name in sorted(_names(font)):
+                            parsed = fontname.parse(name)
+                            index.setdefault(parsed.key, sf)
+                            families.setdefault(sf, set()).add(parsed.family_id)
                 except Exception:
                     continue  # 壊れたフォントや非対応形式は無視
         return index

@@ -44,11 +44,16 @@
       <div class="image-options">
         <label class="check"><input id="include-images" type="checkbox"> 画像内の文字も判定 <span class="muted">(OCR)</span></label>
         <div id="image-controls" class="image-controls" hidden>
+          <fieldset class="methods">
+            <legend>判定方式</legend>
+            <label class="check"><input type="radio" name="method" value="ml" checked> 機械学習</label>
+            <label class="check"><input type="radio" name="method" value="template"> 字形照合</label>
+          </fieldset>
           <label for="min-score" class="slider-label">
-            類似度しきい値 <output id="min-score-value">0.85</output>
+            <span id="min-score-label">しきい値 (確率)</span> <output id="min-score-value">0.55</output>
           </label>
-          <input id="min-score" type="range" min="0.60" max="0.98" step="0.01" value="0.85">
-          <p class="hint">画像内の各行を、PDF内のフォントの字形と比べて推定します。低くすると検出が増え、誤検出も増えます。</p>
+          <input id="min-score" type="range" min="0.30" max="0.98" step="0.01" value="0.55">
+          <p id="method-hint" class="hint"></p>
         </div>
       </div>
     </section>

@@ -98,19 +98,23 @@ def _cmd_scan(args: argparse.Namespace) -> None:
     data = Path(args.pdf).read_bytes()
     with pymupdf.open(stream=data, filetype="pdf") as doc:
         a = analyze(doc)
-        criteria = matcher.Criteria(query=args.font, body_only=args.body_only, min_score=args.min_score)
+        criteria = matcher.Criteria(
+            query=args.font, body_only=args.body_only, min_score=args.min_score, method=args.method
+        )
         image_matches = []
         if args.images:
             from . import imagescan
 
-            image_matches = matcher.search_images(imagescan.scan(doc, a), a, criteria)
+            image_matches = matcher.search_images(
+                imagescan.scan(doc, a, use_ml=args.method == "ml"), a, criteria
+            )
     matches = matcher.search(a, criteria)
     if not matches and not image_matches:
         print(f"'{args.font}' に該当する箇所はありません。", file=sys.stderr)
     for s in matches:
         print(f"p{s.page + 1}\t{a.fonts[s.font_key].display}\t{s.size}pt\t{s.text.strip()}")
-    for ln in image_matches:
-        print(f"p{ln.page + 1}\t{a.fonts[ln.best.key].display}\t画像 {ln.best.score:.2f}\t{ln.text}")
+    for m in image_matches:
+        print(f"p{m.line.page + 1}\t{a.fonts[m.score.key].display}\t画像({m.method}) {m.score.score:.2f}\t{m.line.text}")
     if args.output:
         Path(args.output).write_bytes(annotate.annotate(data, a, matches, image_matches))
         total = len(matches) + len(image_matches)
@@ -144,8 +148,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--font", required=True, help="フォント名 (カンマ区切りで複数可)")
     p.add_argument("--body-only", action="store_true", help="本文と推定される箇所のみ")
     p.add_argument("--images", action="store_true", help="画像内の文字もOCRで判定する")
-    p.add_argument("--min-score", type=float, default=matcher.DEFAULT_MIN_SCORE,
-                   help=f"画像内判定の類似度しきい値 (既定 {matcher.DEFAULT_MIN_SCORE})")
+    p.add_argument("--method", choices=["ml", "template"], default=matcher.DEFAULT_METHOD,
+                   help="画像内の判定方式: ml=機械学習 (既定), template=字形照合")
+    p.add_argument("--min-score", type=float, default=None,
+                   help="画像内判定のしきい値 (既定: ml は %(ml).2f, template は %(template).2f)"
+                   % matcher.DEFAULT_MIN_SCORES)
     p.add_argument("-o", "--output", help="注釈付きPDFの出力先")
     p.set_defaults(func=_cmd_scan)
 

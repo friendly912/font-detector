@@ -11,6 +11,20 @@ const state = {
   imageScan: null,      // 画像内OCRの結果 (ドキュメントごとに一度だけ取得)
 };
 
+// 判定方式ごとの表示と既定のしきい値 (サーバーの matcher.DEFAULT_MIN_SCORES と合わせる)
+const METHODS = {
+  ml: {
+    label: "機械学習", score: "確率", threshold: 0.55,
+    hint: "PDFの本文の字形で文書ごとに分類器を学習し、画像内の各文字がどのフォントかを確率で推定します。" +
+          "PDFに出てこない文字も判定でき、PDFで使われていない書体は「その他」に分類されます。",
+  },
+  template: {
+    label: "字形照合", score: "類似度", threshold: 0.85,
+    hint: "画像内の文字を、PDFの本文にある同じ文字の字形と比べます。同じ文字が本文に無いと比較できません。",
+  },
+};
+const OTHER = "__other__";
+
 const PAGE_SCALE = Math.min(3, Math.max(1.5, (window.devicePixelRatio || 1) * 1.5));
 
 // ---------------------------------------------------------------- API
@@ -35,6 +49,7 @@ function criteria() {
     body_only: $("body-only").checked,
     include_images: $("include-images").checked && state.imageScan !== null,
     min_score: Number($("min-score").value),
+    method: currentMethod(),
   };
 }
 
@@ -78,6 +93,11 @@ function loadDocument(doc) {
   state.imageScan = null;
   $("query").value = "";
   $("include-images").checked = false;
+  for (const radio of document.querySelectorAll('input[name="method"]')) {
+    radio.disabled = false;
+    radio.checked = radio.value === "ml";
+  }
+  applyMethod("ml", { resetThreshold: true });
   $("include-images").disabled = doc.images.length === 0;
   $("image-controls").hidden = true;
   $("body-size").textContent = doc.body_size ? `(本文 ${doc.body_size}pt)` : "";
@@ -187,7 +207,22 @@ function drawImageRegions() {
 }
 
 function fontName(key) {
+  if (key === OTHER) return "その他のフォント";
   return state.fontsByKey.get(key)?.display ?? key;
+}
+
+function currentMethod() {
+  return document.querySelector('input[name="method"]:checked')?.value ?? "ml";
+}
+
+function applyMethod(method, { resetThreshold }) {
+  const m = METHODS[method];
+  $("min-score-label").textContent = `しきい値 (${m.score})`;
+  $("method-hint").textContent = m.hint;
+  if (resetThreshold) {
+    $("min-score").value = m.threshold;
+    $("min-score-value").textContent = m.threshold.toFixed(2);
+  }
 }
 
 function drawOcrLines() {
@@ -196,10 +231,16 @@ function drawOcrLines() {
   for (const ln of state.imageScan.lines) {
     const box = document.createElement("div");
     box.className = "ocr-line";
-    const ranking = ln.ranking.length
-      ? ln.ranking.map((r) => `${fontName(r.font)} ${r.score.toFixed(2)} (${r.compared}字)`).join("\n")
-      : "比較できる見本がありません";
-    box.title = `${ln.text}\n--- 推定 ---\n${ranking}`;
+    const sections = Object.entries(METHODS)
+      .filter(([key]) => key in ln.rankings)
+      .map(([key, m]) => {
+        const ranking = ln.rankings[key];
+        const body = ranking.length
+          ? ranking.slice(0, 3).map((r) => `  ${fontName(r.font)} ${r.score.toFixed(2)} (${r.compared}字)`).join("\n")
+          : "  判定に使える文字がありません";
+        return `【${m.label}・${m.score}】\n${body}`;
+      });
+    box.title = `${ln.text}\n${sections.join("\n")}`;
     placeBox(box, ln.bbox, state.doc.page_sizes[ln.page - 1]);
     overlayOf(ln.page).append(box);
   }
@@ -215,7 +256,8 @@ function drawMatches() {
     if (m.source === "image") {
       box.classList.add("image-hit");
       box.style.setProperty("--hit-color", font.color);
-      box.title = `画像内推定: ${font.display} (類似度 ${m.score.toFixed(2)})\n${m.text}`;
+      const method = METHODS[m.method];
+      box.title = `画像内推定: ${font.display} (${method.label}・${method.score} ${m.score.toFixed(2)})\n${m.text}`;
     } else {
       box.style.background = font.color;
       box.title = `${font.display} / ${m.size}pt\n${m.text}`;
@@ -298,7 +340,7 @@ function renderResults(hasTarget) {
     if (m.source === "image") {
       meta.className = "badge";
       meta.textContent = `画像 ${m.score.toFixed(2)}`;
-      meta.title = "画像内の文字（OCR）から推定。数値は字形の類似度";
+      meta.title = `画像内の文字（OCR）から推定。数値は${METHODS[m.method].label}の${METHODS[m.method].score}`;
     } else {
       meta.className = "result-size";
       meta.textContent = `${m.size}pt`;
@@ -338,9 +380,22 @@ async function toggleImages(enabled) {
     try {
       const res = await api(`/api/documents/${state.doc.id}/image-scan`, { method: "POST" });
       state.imageScan = await res.json();
-      const decided = state.imageScan.lines.filter((l) => l.ranking.length > 0).length;
-      setStatus(`画像${state.imageScan.regions}個から${state.imageScan.lines.length}行を読み取り、` +
-                `${decided}行でフォントを比較しました。`);
+      const scan = state.imageScan;
+      let msg = `画像${scan.regions}個から${scan.lines.length}行を読み取りました。`;
+      const mlRadio = document.querySelector('input[name="method"][value="ml"]');
+      mlRadio.disabled = !scan.methods.includes("ml");
+      if (scan.training) {
+        const t = scan.training;
+        const pdfFonts = Object.keys(t.glyphs).filter((k) => k !== OTHER).length;
+        msg += ` 機械学習: PDFのフォント${pdfFonts}種` +
+               (t.other_fonts ? `・その他の書体${t.other_fonts}種` : "") +
+               `から${t.samples.toLocaleString()}件の字形を学習しました。`;
+      } else {
+        msg += " 機械学習に必要な学習データが足りないため、字形照合で判定します。";
+        document.querySelector('input[name="method"][value="template"]').checked = true;
+        applyMethod("template", { resetThreshold: true });
+      }
+      setStatus(msg);
       renderFontList();
       drawOcrLines();
     } catch (err) {
@@ -406,6 +461,13 @@ function init() {
   $("query").addEventListener("input", scheduleSearch);
   $("body-only").addEventListener("change", runSearch);
   $("include-images").addEventListener("change", (e) => toggleImages(e.target.checked));
+  for (const radio of document.querySelectorAll('input[name="method"]')) {
+    radio.addEventListener("change", () => {
+      applyMethod(currentMethod(), { resetThreshold: true });
+      runSearch();
+    });
+  }
+  applyMethod(currentMethod(), { resetThreshold: true });
   $("min-score").addEventListener("input", (e) => {
     $("min-score-value").textContent = Number(e.target.value).toFixed(2);
     scheduleSearch();

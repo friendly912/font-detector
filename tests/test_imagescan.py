@@ -11,6 +11,8 @@ from font_detector.server import create_app
 from font_detector.sysfonts import SystemFontIndex
 
 SERIF_KEY, SANS_KEY = "notoserifcjkjp", "notosanscjkjp"
+TEMPLATE = "template"
+THRESHOLD = matcher.DEFAULT_MIN_SCORES[TEMPLATE]
 
 
 def _require_tesseract():
@@ -28,7 +30,7 @@ def scanned(image_pdf):
     doc = pymupdf.open(stream=image_pdf, filetype="pdf")
     a = analyze(doc)
     # システムフォントを使わず、PDF内の見本だけで判定できることを確かめる
-    return a, imagescan.scan(doc, a, font_index=SystemFontIndex([]))
+    return a, imagescan.scan(doc, a, font_index=SystemFontIndex([]), use_ml=False)
 
 
 def _line(scan, prefix):
@@ -42,21 +44,30 @@ def test_image_lines_are_attributed_to_pdf_fonts(scanned):
 
     serif = _line(scan, "画像の中")
     sans = _line(scan, "この行は")
-    assert serif.best.key == SERIF_KEY and serif.best.score >= matcher.DEFAULT_MIN_SCORE
-    assert sans.best.key == SANS_KEY and sans.best.score >= matcher.DEFAULT_MIN_SCORE
+    serif_best, sans_best = serif.best(TEMPLATE), sans.best(TEMPLATE)
+    assert serif_best.key == SERIF_KEY and serif_best.score >= THRESHOLD
+    assert sans_best.key == SANS_KEY and sans_best.score >= THRESHOLD
 
 
 def test_font_not_in_pdf_stays_below_threshold(scanned):
     _, scan = scanned
     other = _line(scan, "別の書体")
-    assert other.best.score < matcher.DEFAULT_MIN_SCORE
+    assert other.best(TEMPLATE).score < THRESHOLD
 
 
 def test_search_images_respects_selection_and_threshold(scanned):
     a, scan = scanned
-    hits = matcher.search_images(scan, a, matcher.Criteria(font_keys=frozenset({SERIF_KEY})))
-    assert [ln.text[:4] for ln in hits] == ["画像の中"]
-    assert matcher.search_images(scan, a, matcher.Criteria(font_keys=frozenset({SERIF_KEY}), min_score=0.99)) == []
+    crit = dict(font_keys=frozenset({SERIF_KEY}), method=TEMPLATE)
+    hits = matcher.search_images(scan, a, matcher.Criteria(**crit))
+    assert [m.line.text[:4] for m in hits] == ["画像の中"]
+    assert matcher.search_images(scan, a, matcher.Criteria(**crit, min_score=0.99)) == []
+
+
+def test_unavailable_method_falls_back_to_template(scanned):
+    a, scan = scanned
+    assert scan.methods == [TEMPLATE]
+    hits = matcher.search_images(scan, a, matcher.Criteria(font_keys=frozenset({SERIF_KEY}), method="ml"))
+    assert [(m.method, m.line.text[:4]) for m in hits] == [(TEMPLATE, "画像の中")]
 
 
 def test_image_line_coordinates_fall_inside_image(scanned):
@@ -68,7 +79,7 @@ def test_image_line_coordinates_fall_inside_image(scanned):
 
 def test_annotate_marks_image_lines(image_pdf, scanned):
     a, scan = scanned
-    hits = matcher.search_images(scan, a, matcher.Criteria(font_keys=frozenset({SERIF_KEY, SANS_KEY})))
+    hits = matcher.search_images(scan, a, matcher.Criteria(font_keys=frozenset({SERIF_KEY, SANS_KEY}), method=TEMPLATE))
     out = annotate.annotate(image_pdf, a, [], hits)
     with pymupdf.open(stream=out, filetype="pdf") as doc:
         types = [an.type[1] for an in doc[0].annots()]
@@ -152,10 +163,12 @@ def test_api_image_scan(image_pdf):
 
     scan = client.post(f"/api/documents/{doc['id']}/image-scan").json()
     assert scan["regions"] == 1 and len(scan["lines"]) == 3
+    assert scan["methods"] == ["ml", "template"] and scan["training"]["samples"] > 0
 
     r = client.post(f"/api/documents/{doc['id']}/search", json={**body, "include_images": True})
     image_hits = [m for m in r.json()["matches"] if m["source"] == "image"]
     assert len(image_hits) == 1 and image_hits[0]["font"] == SERIF_KEY
+    assert image_hits[0]["method"] == "ml"
 
     r = client.post(f"/api/documents/{doc['id']}/search", json={**body, "include_images": False})
     assert all(m["source"] == "text" for m in r.json()["matches"])

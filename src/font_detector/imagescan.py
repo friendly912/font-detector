@@ -1,12 +1,18 @@
 """画像領域の文字をOCRし、PDF内のフォントのどれで書かれているかを推定する。
 
+判定方式は2つ:
+  - "ml":       文書ごとに学習した分類器 (mlclassifier) による確率。PDFに無い文字も判定でき、
+                PDFで使われていない書体は「その他」に分類される。
+  - "template": 同じ文字の見本字形との類似度 (glyphs.similarity)。
+
 結果 (行ごとの候補フォントとスコア) は指定フォントに依存しないので、ドキュメントごとに
-一度だけ計算し、検索時はしきい値と指定フォントで絞り込むだけにする。
+一度だけ計算し、検索時は判定方式・しきい値・指定フォントで絞り込むだけにする。
 """
 
 from __future__ import annotations
 
 import contextlib
+import logging
 from dataclasses import dataclass, field
 from typing import ContextManager
 
@@ -23,6 +29,9 @@ MIN_REGION_PT = 20                # これより小さい画像は対象外
 MIN_CHARS_COMPARED = 2            # 判定に必要な比較文字数
 TEXT_OVERLAP_RATIO = 0.5          # テキストレイヤーと重なる行は重複として除外
 MIN_CHAR_CONF = 60                # OCRの文字ごとの確信度 (0-100) がこれ未満の文字は比較しない
+
+ML, TEMPLATE = "ml", "template"
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -43,17 +52,17 @@ class ImageLine:
     text: str
     ocr_score: float
     usable_chars: int   # 形の比較に使える文字数
-    ranking: list[FontScore] = field(default_factory=list)
+    rankings: dict[str, list[FontScore]] = field(default_factory=dict)  # 判定方式 → 候補 (スコア順)
 
-    @property
-    def best(self) -> FontScore | None:
-        return self.ranking[0] if self.ranking else None
+    def best(self, method: str) -> FontScore | None:
+        ranking = self.rankings.get(method)
+        return ranking[0] if ranking else None
 
-    @property
-    def margin(self) -> float:
-        if len(self.ranking) < 2:
+    def margin(self, method: str) -> float:
+        ranking = self.rankings.get(method, [])
+        if len(ranking) < 2:
             return 1.0
-        return self.ranking[0].score - self.ranking[1].score
+        return ranking[0].score - ranking[1].score
 
     def to_json(self) -> dict:
         return {
@@ -62,7 +71,7 @@ class ImageLine:
             "text": self.text,
             "ocr_score": round(self.ocr_score, 4),
             "usable_chars": self.usable_chars,
-            "ranking": [r.to_json() for r in self.ranking[:5]],
+            "rankings": {m: [r.to_json() for r in rs[:5]] for m, rs in self.rankings.items()},
         }
 
 
@@ -71,12 +80,16 @@ class ImageScan:
     lines: list[ImageLine]
     references: dict[str, glyphs.FontReferences]
     regions: int
+    methods: list[str]                  # 利用できた判定方式
+    training: dict | None = None        # 機械学習の学習データの概要
 
     def to_json(self) -> dict:
         return {
             "regions": self.regions,
             "lines": [ln.to_json() for ln in self.lines],
             "references": {k: v.to_json() for k, v in self.references.items()},
+            "methods": self.methods,
+            "training": self.training,
         }
 
 
@@ -118,12 +131,29 @@ def _score_line(obs: _Observed, refs: dict[str, glyphs.FontReferences]) -> list[
     return ranking
 
 
+def _train_classifier(doc, analysis, font_index, lock):
+    """機械学習の分類器を学習する。学習できない (ライブラリが無い・クラス不足) 場合は None。"""
+    try:
+        from . import mlclassifier
+    except ImportError as e:
+        log.warning("機械学習による判定は使えません (%s がありません)", e.name)
+        return None
+    return mlclassifier.train(doc, analysis, font_index, mupdf_lock=lock)
+
+
+def _ml_ranking(classifier, obs: _Observed) -> list[FontScore]:
+    if classifier is None or len(obs.chars) < MIN_CHARS_COMPARED:
+        return []
+    return [FontScore(k, p, n) for k, p, n in classifier.rank_line(obs.chars)]
+
+
 def scan(
     doc: pymupdf.Document,
     analysis: Analysis,
     mupdf_lock: ContextManager | None = None,
     engine: OcrEngine = default_engine,
     font_index: SystemFontIndex = default_index,
+    use_ml: bool = True,
 ) -> ImageScan:
     lock = mupdf_lock or contextlib.nullcontext()
 
@@ -175,6 +205,7 @@ def scan(
     with lock:
         refs = glyphs.collect_pdf_references(doc, analysis, needed)
     glyphs.add_system_references(refs, analysis, needed, font_index)
+    classifier = _train_classifier(doc, analysis, font_index, lock) if use_ml and observed else None
 
     lines: list[ImageLine] = []
     for o in observed:
@@ -193,6 +224,12 @@ def scan(
             text=o.line.text,
             ocr_score=o.line.score,
             usable_chars=len(o.chars),
-            ranking=_score_line(o, refs),
+            rankings={TEMPLATE: _score_line(o, refs), **({ML: _ml_ranking(classifier, o)} if classifier else {})},
         ))
-    return ImageScan(lines=lines, references=refs, regions=sum(len(v) for v in by_page.values()))
+    return ImageScan(
+        lines=lines,
+        references=refs,
+        regions=sum(len(v) for v in by_page.values()),
+        methods=([ML] if classifier else []) + [TEMPLATE],
+        training=classifier.summary.to_json() if classifier else None,
+    )

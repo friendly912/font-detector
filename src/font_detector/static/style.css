@@ -141,6 +141,9 @@ h2 { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: 0.0
 
 .image-options { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
 .image-controls { margin-top: 8px; }
+.methods { display: flex; gap: 16px; margin: 0 0 8px; padding: 0; border: 0; }
+.methods legend { float: left; margin-right: 4px; font-size: 12px; color: var(--muted); line-height: 1.9; }
+.methods .check:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
 .slider-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
 .slider-label output { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
 #min-score { width: 100%; accent-color: var(--accent); }

@@ -68,10 +68,13 @@ class SearchRequest(BaseModel):
     query: str = ""
     body_only: bool = False
     include_images: bool = False
-    min_score: float = matcher.DEFAULT_MIN_SCORE
+    min_score: float | None = None
+    method: str = matcher.DEFAULT_METHOD
 
     def criteria(self) -> matcher.Criteria:
-        return matcher.Criteria(frozenset(self.font_keys), self.query, self.body_only, self.min_score)
+        return matcher.Criteria(
+            frozenset(self.font_keys), self.query, self.body_only, self.min_score, self.method
+        )
 
 
 def _image_matches(item: StoredDocument, req: SearchRequest):
@@ -131,15 +134,16 @@ def create_app() -> FastAPI:
             ]
             + [
                 {
-                    "page": ln.page + 1,
-                    "bbox": ln.view_bbox,
-                    "text": ln.text,
-                    "font": ln.best.key,
-                    "score": round(ln.best.score, 4),
-                    "margin": round(ln.margin, 4),
+                    "page": m.line.page + 1,
+                    "bbox": m.line.view_bbox,
+                    "text": m.line.text,
+                    "font": m.score.key,
+                    "score": round(m.score.score, 4),
+                    "margin": round(m.line.margin(m.method), 4),
+                    "method": m.method,
                     "source": "image",
                 }
-                for ln in _image_matches(item, req)
+                for m in _image_matches(item, req)
             ],
             "font_keys": sorted(matcher.target_keys(item.analysis, req.criteria())),
         }

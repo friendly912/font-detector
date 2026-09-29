@@ -11,6 +11,8 @@ from __future__ import annotations
 import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass, field
+from functools import lru_cache
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -18,7 +20,7 @@ import pymupdf
 
 from .analyzer import Analysis
 from . import fontname
-from .sysfonts import SystemFontIndex
+from .sysfonts import SystemFont, SystemFontIndex, cmap
 
 GLYPH_SIZE = 32
 REF_SCALE = 6.0          # 見本を切り出すときのページ描画倍率 (11pt ≒ 66px)
@@ -129,6 +131,13 @@ def collect_pdf_references(
     doc: pymupdf.Document, analysis: Analysis, needed: set[str]
 ) -> dict[str, FontReferences]:
     """テキストレイヤーから、必要な文字の見本を埋め込みフォントごとに切り出す。"""
+    return collect_pdf_glyphs(doc, analysis, lambda key, c: c in needed)
+
+
+def collect_pdf_glyphs(
+    doc: pymupdf.Document, analysis: Analysis, want: Callable[[str, str], bool]
+) -> dict[str, FontReferences]:
+    """テキストレイヤーから、want(フォントキー, 文字) が真の文字の字形を1つずつ切り出す。"""
     wanted: dict[int, list[tuple[str, str, pymupdf.Rect]]] = defaultdict(list)
     seen: set[tuple[str, str]] = set()
     for pno, page in enumerate(doc):
@@ -148,7 +157,7 @@ def collect_pdf_references(
                         continue
                     for ch in span["chars"]:
                         c = ch["c"]
-                        if c in needed and (key, c) not in seen:
+                        if (key, c) not in seen and want(key, c):
                             seen.add((key, c))
                             wanted[pno].append((key, c, pymupdf.Rect(ch["bbox"])))
 
@@ -166,10 +175,17 @@ def collect_pdf_references(
     return dict(refs)
 
 
-def render_system_glyph(path: str, index: int, ch: str) -> np.ndarray | None:
-    from PIL import Image, ImageDraw, ImageFont
+@lru_cache(maxsize=32)
+def _pil_font(path: str, index: int):
+    from PIL import ImageFont
 
-    font = ImageFont.truetype(path, SYSTEM_RENDER_PX, index=index)
+    return ImageFont.truetype(path, SYSTEM_RENDER_PX, index=index)
+
+
+def render_system_glyph(path: str, index: int, ch: str) -> np.ndarray | None:
+    from PIL import Image, ImageDraw
+
+    font = _pil_font(path, index)
     img = Image.new("L", (SYSTEM_RENDER_PX * 2, SYSTEM_RENDER_PX * 2), 255)
     ImageDraw.Draw(img).text((SYSTEM_RENDER_PX // 2, SYSTEM_RENDER_PX // 2), ch, font=font, fill=0)
     return ink_crop(np.asarray(img))
@@ -179,8 +195,6 @@ def add_system_references(
     refs: dict[str, FontReferences], analysis: Analysis, needed: set[str], index: SystemFontIndex
 ) -> None:
     """PDFから集められなかった文字を、同名のシステムフォントで補う。"""
-    from fontTools.ttLib import TTFont
-
     for key in analysis.fonts:
         entry = refs.get(key) or FontReferences()
         missing = needed - entry.glyphs.keys()
@@ -189,12 +203,9 @@ def add_system_references(
         sf = index.lookup(key)
         if sf is None:
             continue
-        try:
-            cmap = TTFont(sf.path, fontNumber=sf.index, lazy=True).getBestCmap() or {}
-        except Exception:
-            continue
+        covered = cmap(sf)
         for c in missing:
-            if ord(c) not in cmap:
+            if ord(c) not in covered:
                 continue
             ink = render_system_glyph(sf.path, sf.index, c)
             if ink is not None:
@@ -202,3 +213,15 @@ def add_system_references(
                 entry.sources.add("system")
         if entry.glyphs:
             refs[key] = entry
+
+
+def render_font_glyphs(font: SystemFont, chars: set[str]) -> dict[str, np.ndarray]:
+    """システムフォントで文字を描画する (フォントに無い文字は除く)。"""
+    covered = cmap(font)
+    out: dict[str, np.ndarray] = {}
+    for c in sorted(chars):
+        if ord(c) in covered:
+            ink = render_system_glyph(font.path, font.index, c)
+            if ink is not None:
+                out[c] = ink
+    return out
